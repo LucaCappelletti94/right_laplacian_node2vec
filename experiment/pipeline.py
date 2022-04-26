@@ -1,3 +1,4 @@
+import silence_tensorflow.auto
 from embiggen.pipelines import evaluate_embedding_for_edge_prediction
 from ensmallen import Graph
 from tqdm.auto import tqdm
