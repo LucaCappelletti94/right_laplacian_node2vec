@@ -38,6 +38,7 @@ def run_experiment():
             ],
             model_name="Perceptron",
             use_only_cpu=True,
+            use_mirrored_strategy=False,
             embedding_method_kwargs=dict(
                 max_neighbours=1000,
                 iterations=10,
