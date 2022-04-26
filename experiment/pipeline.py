@@ -27,15 +27,15 @@ def run_experiment():
             embedding_method="CBOW",
             graphs=[
                 "HomoSapiens",
-                # "DrosophilaMelanogaster",
-                # "ArabidopsisThaliana",
-                # "SaccharomycesCerevisiae",
-                # "RattusNorvegicus",
-                # "MusMusculus",
-                # "SusScrofa",
-                # "AmanitaMuscariaKoideBx008",
-                # "AlligatorSinensis",
-                # "CanisLupus"
+                "DrosophilaMelanogaster",
+                "ArabidopsisThaliana",
+                "SaccharomycesCerevisiae",
+                "RattusNorvegicus",
+                "MusMusculus",
+                "SusScrofa",
+                "AmanitaMuscariaKoideBx008",
+                "AlligatorSinensis",
+                "CanisLupus"
             ],
             model_name="Perceptron",
             use_only_cpu=True,
@@ -44,7 +44,7 @@ def run_experiment():
             embedding_method_kwargs=dict(
                 max_neighbours=200,
                 iterations=10,
-                epochs=80,
+                epochs=50,
                 normalize_by_degree=normalize_by_degree
             ),
             graph_normalization_callback=string_graph_normalization
