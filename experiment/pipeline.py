@@ -44,9 +44,7 @@ def run_experiment():
             embedding_method_kwargs=dict(
                 max_neighbours=200,
                 iterations=10,
-                epochs=20,
-                return_weight=4.0,
-                explore_weight=0.25,
+                epochs=50,
                 normalize_by_degree=normalize_by_degree
             ),
             graph_normalization_callback=string_graph_normalization
