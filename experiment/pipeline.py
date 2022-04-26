@@ -29,6 +29,7 @@ def run_experiment():
                 "CanisLupus"
             ],
             model_name="Perceptron",
+            use_only_cpu=True,
             embedding_method_kwargs=dict(
                 max_neighbours=1000,
                 iterations=10,
