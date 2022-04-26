@@ -54,4 +54,4 @@ def run_experiment():
     
     pd.concat(
         all_holdouts
-    ).to_csv("right_laplacian_experiments.tsv", index=False)
+    ).to_csv("right_laplacian_experiments.csv", index=False)
