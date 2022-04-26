@@ -40,11 +40,11 @@ def run_experiment():
             model_name="Perceptron",
             use_only_cpu=True,
             use_mirrored_strategy=False,
-            number_of_holdouts=4,
+            number_of_holdouts=10,
             embedding_method_kwargs=dict(
                 max_neighbours=200,
                 iterations=10,
-                epochs=50,
+                epochs=80,
                 normalize_by_degree=normalize_by_degree
             ),
             graph_normalization_callback=string_graph_normalization
