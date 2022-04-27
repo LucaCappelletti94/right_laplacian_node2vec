@@ -4,12 +4,20 @@ from ensmallen import Graph
 from tqdm.auto import tqdm
 import pandas as pd
 
+
 def string_graph_normalization(graph: Graph) -> Graph:
-    """Apply standard STRING PPI normalization."""
+    """Apply standard STRING PPI normalization.
+    
+    Parameters
+    --------------------
+    graph: Graph
+        The STRING PPI graph to normalize.
+    """
     return graph.filter_from_names(min_edge_weight=700)\
         .drop_singleton_nodes()\
         .sort_by_decreasing_outbound_node_degree()\
         .divide_edge_weights(1000.0)
+
 
 def run_experiment():
     """Pipeline to execute the right laplacian experiments."""
@@ -51,7 +59,7 @@ def run_experiment():
         )
         holdouts["normalization_name"] = normalization_name
         all_holdouts.append(holdouts)
-    
+
     pd.concat(
         all_holdouts
     ).to_csv("right_laplacian_experiments.csv", index=False)
