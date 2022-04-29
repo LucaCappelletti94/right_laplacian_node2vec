@@ -25,3 +25,18 @@ To retrieve the required datasets and run the experiment, execute the following 
 ```bash
 python3 run.py
 ```
+
+The runtime on a normal desktop computer is about 1-2 days.
+
+### Visualizing the results
+The barplots results can be visualized by running the snipped in the [visualization jupyter notebook]():
+
+```python
+import pandas as pd
+from barplots import barplots
+
+_ = barplots(
+    pd.read_csv("right_laplacian_experiments.csv"),
+    groupby=["evaluation_type", "normalization_name", "unbalance"],
+)
+```

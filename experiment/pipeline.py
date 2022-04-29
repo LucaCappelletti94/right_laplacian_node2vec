@@ -15,7 +15,6 @@ def string_graph_normalization(graph: Graph) -> Graph:
     """
     return graph.filter_from_names(min_edge_weight=700)\
         .drop_singleton_nodes()\
-        .sort_by_decreasing_outbound_node_degree()\
         .divide_edge_weights(1000.0)
 
 
