@@ -36,9 +36,7 @@ def run_experiment():
             graphs=[
                 "HomoSapiens",
                 "DrosophilaMelanogaster",
-                "ArabidopsisThaliana",
                 "SaccharomycesCerevisiae",
-                "RattusNorvegicus",
                 "MusMusculus",
                 "SusScrofa",
                 "AmanitaMuscariaKoideBx008",
