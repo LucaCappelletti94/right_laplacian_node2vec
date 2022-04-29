@@ -28,8 +28,10 @@ python3 run.py
 
 The runtime on a normal desktop computer is about 1-2 days.
 
+All of our results are available in the [`right_laplacian_experiments.csv` document here](https://github.com/LucaCappelletti94/right_laplacian_node2vec/blob/main/right_laplacian_experiments.csv).
+
 ### Visualizing the results
-The barplots results can be visualized by running the snipped in the [visualization jupyter notebook]():
+The barplots results can be visualized by running the snipped in the [visualization jupyter notebook](https://github.com/LucaCappelletti94/right_laplacian_node2vec/blob/main/notebooks/Barplots%20visualization.ipynb):
 
 ```python
 import pandas as pd
