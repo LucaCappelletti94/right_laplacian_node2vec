@@ -24,8 +24,7 @@ def retrieve_coo_graph(
     """
     if settings_graph_name is None:
         settings_graph_name = graph_name
-    urls = compress_json.local_load("internet_archive_urls.json")
-    url = urls[graph_name]
+    url = "https://archive.org/download/ctd_20220404/CTD.tar"
 
     graph_name_lower = graph_name.lower()
 
