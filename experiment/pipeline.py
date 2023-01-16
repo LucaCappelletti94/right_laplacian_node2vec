@@ -70,12 +70,12 @@ def run_experiment(smoke_test: bool = False) -> pd.DataFrame:
                 number_of_holdouts=10,
                 node_features=embedding_model(
                     normalize_by_degree=normalize_by_degree,
-                    verbose=False,
                     enable_cache=True
                 ),
                 graph_callback=string_graph_normalization,
                 smoke_test=smoke_test,
                 enable_cache=True,
+                verbose=True
             )
             all_holdouts.append(performance)
 
