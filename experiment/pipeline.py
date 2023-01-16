@@ -1,4 +1,3 @@
-import silence_tensorflow.auto
 from grape.edge_prediction import edge_prediction_evaluation
 from grape.edge_prediction import DecisionTreeEdgePrediction, RandomForestEdgePrediction, GradientBoostingEdgePrediction
 from grape.embedders import WalkletsSkipGramEnsmallen, Node2VecSkipGramEnsmallen, DeepWalkSkipGramEnsmallen
