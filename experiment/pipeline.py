@@ -1,5 +1,7 @@
 import silence_tensorflow.auto
-from embiggen.pipelines import evaluate_embedding_for_edge_prediction
+from grape.edge_prediction import edge_prediction_evaluation
+from grape.edge_prediction import DecisionTreeEdgePrediction, RandomForestEdgePrediction, GradientBoostingEdgePrediction
+from grape.embedders import WalkletsSkipGramEnsmallen, Node2VecSkipGramEnsmallen, DeepWalkSkipGramEnsmallen
 from ensmallen import Graph
 from tqdm.auto import tqdm
 import pandas as pd
@@ -14,49 +16,72 @@ def string_graph_normalization(graph: Graph) -> Graph:
         The STRING PPI graph to normalize.
     """
     return graph.filter_from_names(min_edge_weight=700)\
-        .drop_singleton_nodes()\
+        .remove_components(top_k_components=1)\
         .divide_edge_weights(1000.0)
 
 
-def run_experiment():
-    """Pipeline to execute the right laplacian experiments."""
+def run_experiment(smoke_test: bool = False) -> pd.DataFrame:
+    """Pipeline to execute the Degree Normalization experiments.
+    
+    Parameters
+    --------------------
+    smoke_test: bool
+        Whether this run needs to be a smoke test.
+    """
     all_holdouts = []
-    for normalization_name, normalize_by_degree in tqdm(
-        (
-            ("Traditional", False),
-            ("Right Laplacian", True),
-        ),
+    for normalize_by_degree in tqdm(
+        (True, False),
         leave=False,
         desc="Running Experiments",
         dynamic_ncols=True,
     ):
-        holdouts, _ = evaluate_embedding_for_edge_prediction(
-            embedding_method="CBOW",
-            graphs=[
-                "HomoSapiens",
-                "DrosophilaMelanogaster",
-                "SaccharomycesCerevisiae",
-                "MusMusculus",
-                "SusScrofa",
-                "AmanitaMuscariaKoideBx008",
-                "AlligatorSinensis",
-                "CanisLupus"
-            ],
-            model_name="Perceptron",
-            use_only_cpu=True,
-            use_mirrored_strategy=False,
-            number_of_holdouts=10,
-            embedding_method_kwargs=dict(
-                max_neighbours=200,
-                iterations=10,
-                epochs=50,
-                normalize_by_degree=normalize_by_degree
+        for embedding_model in tqdm(
+            (
+                WalkletsSkipGramEnsmallen,
+                Node2VecSkipGramEnsmallen,
+                DeepWalkSkipGramEnsmallen
             ),
-            graph_normalization_callback=string_graph_normalization
-        )
-        holdouts["normalization_name"] = normalization_name
-        all_holdouts.append(holdouts)
+            leave=False,
+            desc="Embedding",
+            dynamic_ncols=True,
+        ):
+            performance = edge_prediction_evaluation(
+                holdouts_kwargs=dict(
+                    train_size=0.8,
+                    minimum_node_degree=5,
+                    maximum_node_degree=100,
+                ),
+                graphs=[
+                    "HomoSapiens",
+                    "DrosophilaMelanogaster",
+                    "SaccharomycesCerevisiae",
+                    "MusMusculus",
+                    "SusScrofa",
+                    "AmanitaMuscariaKoideBx008",
+                    "AlligatorSinensis",
+                    "CanisLupus"
+                ],
+                models=[
+                    DecisionTreeEdgePrediction(),
+                    RandomForestEdgePrediction(),
+                    GradientBoostingEdgePrediction()
+                ],
+                evaluation_schema="Connected Monte Carlo",
+                number_of_holdouts=10,
+                node_features=embedding_model(
+                    normalize_by_degree=normalize_by_degree,
+                    enable_cache=True
+                ),
+                graph_callback=string_graph_normalization,
+                smoke_test=smoke_test,
+                enable_cache=True
+            )
+            all_holdouts.append(performance)
 
-    pd.concat(
+    results = pd.concat(
         all_holdouts
-    ).to_csv("right_laplacian_experiments.csv", index=False)
+    )
+    
+    results.to_csv("degree_normalization_experiments.csv", index=False)
+
+    return results

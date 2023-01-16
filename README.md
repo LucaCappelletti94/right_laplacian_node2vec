@@ -1,5 +1,5 @@
-# Right Laplacian Node2Vec
-Experiments evaluating the performance of Right Laplacian weighting in Node2Vec sampling.
+# Degree Normalization Node2Vec
+Experiments evaluating the performance of Degree Normalization weighting in Node2Vec sampling.
 
 ## Running the experiments
 To run the experiments, you need to clone the repository, install the dependencies and execute the `run.py` python script.

@@ -1,4 +1,4 @@
-"""Run the Right Laplacian Node2Vec experiments."""
+"""Run the Degree Normalization Node2Vec experiments."""
 from experiment import run_experiment
 
 
