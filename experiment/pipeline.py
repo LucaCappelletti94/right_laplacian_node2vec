@@ -6,6 +6,9 @@ from ensmallen import Graph
 from tqdm.auto import tqdm
 import pandas as pd
 
+from sklearnex import patch_sklearn
+patch_sklearn()
+
 
 def string_graph_normalization(graph: Graph) -> Graph:
     """Apply standard STRING PPI normalization.
