@@ -65,9 +65,9 @@ def run_experiment(smoke_test: bool = False) -> pd.DataFrame:
                     "CanisLupus"
                 ],
                 models=[
-                    DecisionTreeEdgePrediction(),
+                    #DecisionTreeEdgePrediction(),
                     RandomForestEdgePrediction(),
-                    GradientBoostingEdgePrediction()
+                    #GradientBoostingEdgePrediction()
                 ],
                 evaluation_schema="Connected Monte Carlo",
                 number_of_holdouts=10,
