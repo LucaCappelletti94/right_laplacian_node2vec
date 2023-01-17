@@ -1,3 +1,6 @@
+from sklearnex import patch_sklearn
+patch_sklearn()
+
 import silence_tensorflow.auto
 from grape.edge_prediction import edge_prediction_evaluation
 from grape.edge_prediction import DecisionTreeEdgePrediction, RandomForestEdgePrediction, GradientBoostingEdgePrediction
@@ -5,9 +8,6 @@ from grape.embedders import WalkletsSkipGramEnsmallen, Node2VecSkipGramEnsmallen
 from ensmallen import Graph
 from tqdm.auto import tqdm
 import pandas as pd
-
-from sklearnex import patch_sklearn
-patch_sklearn()
 
 
 def string_graph_normalization(graph: Graph) -> Graph:
