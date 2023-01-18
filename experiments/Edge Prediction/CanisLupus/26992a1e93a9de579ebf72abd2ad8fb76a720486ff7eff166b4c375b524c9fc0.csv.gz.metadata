@@ -1,0 +1,464 @@
+{
+    "creation_time": 1673973337.8957772,
+    "creation_time_human": "2023-01-17 16:35:37",
+    "time_delta": 1264.8818988800049,
+    "time_delta_human": "21 minutes and 4 seconds",
+    "file_dump_time": 0.00912165641784668,
+    "file_dump_time_human": "0 seconds",
+    "file_dump_size": 6384,
+    "file_dump_size_human": "6.4 kB",
+    "load_kwargs": {},
+    "dump_kwargs": {},
+    "function_name": "evaluate",
+    "function_file": "/home/lucacappelletti/anaconda3/lib/python3.7/site-packages/embiggen/utils/abstract_models/abstract_classifier_model.py:1602",
+    "args_to_ignore": [
+        "verbose",
+        "smoke_test"
+    ],
+    "source": "    @classmethod\n    @Cache(\n        cache_path=\"{cache_dir}/{cls.task_name()}/{graph.get_name()}/{_hash}.csv.gz\",\n        cache_dir=\"experiments\",\n        enable_cache_arg_name=\"enable_top_layer_cache\",\n        args_to_ignore=[\"verbose\", \"smoke_test\"],\n        capture_enable_cache_arg_name=True,\n        use_approximated_hash=True\n    )\n    def evaluate(\n        cls,\n        models: Union[Type[\"AbstractClassifierModel\"], List[Type[\"AbstractClassifierModel\"]]],\n        graph: Graph,\n        evaluation_schema: str,\n        holdouts_kwargs: Dict[str, Any],\n        library_names: Optional[Union[str, List[str]]] = None,\n        node_features: Optional[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel], List[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel]]]]] = None,\n        node_type_features: Optional[Union[pd.DataFrame, np.ndarray, List[Union[pd.DataFrame, np.ndarray]]]] = None,\n        edge_features: Optional[Union[str, pd.DataFrame, np.ndarray, List[Union[str, pd.DataFrame, np.ndarray]]]] = None,\n        subgraph_of_interest: Optional[Graph] = None,\n        use_subgraph_as_support: bool = False,\n        number_of_holdouts: int = 10,\n        random_state: int = 42,\n        verbose: bool = True,\n        enable_cache: bool = False,\n        precompute_constant_stocastic_features: bool = False,\n        smoke_test: bool = False,\n        number_of_slurm_nodes: Optional[int] = None,\n        slurm_node_id_variable: str = \"SLURM_GRAPE_ID\",\n        **validation_kwargs: Dict\n    ) -> pd.DataFrame:\n        \"\"\"Execute evaluation on the provided graph.\n\n        Parameters\n        --------------------\n        models: Union[Type[\"AbstractClassifierModel\"], List[Type[\"AbstractClassifierModel\"]]]\n            The model(s) to be evaluated.\n        graph: Graph\n            The graph to run predictions on.\n        evaluation_schema: str\n            The schema for the evaluation to follow.\n        holdouts_kwargs: Dict[str, Any]\n            Parameters to forward to the desired evaluation schema.\n        library_names: Optional[Union[str, List[str]]] = None\n            The library names of the models, needed when a desired model is implemented in multiple\n            libraries and it is unclear which one to use.\n        node_features: Optional[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel], List[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel]]]]] = None\n            The node features to use.\n        node_type_features: Optional[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel], List[Union[str, pd.DataFrame, np.ndarray, Type[AbstractEmbeddingModel]]]]] = None\n            The node features to use.\n        edge_features: Optional[Union[str, pd.DataFrame, np.ndarray, List[Union[str, pd.DataFrame, np.ndarray]]]] = None\n            The edge features to use.\n        subgraph_of_interest: Optional[Graph] = None\n            Optional subgraph where to focus the task.\n            This is applied to the train and test graph\n            after the desired holdout schema is applied.\n        use_subgraph_as_support: bool = False\n            Whether to use the provided subgraph as support or\n            to use the train graph (not filtered by the subgraph).\n        skip_evaluation_biased_feature: bool = False\n            Whether to skip feature names that are known to be biased\n            when running an holdout. These features should be computed\n            exclusively on the training graph and not the entire graph.\n        number_of_holdouts: int = 10\n            The number of holdouts to execute.\n        random_state: int = 42\n            The random state to use for the holdouts.\n        verbose: bool = True\n            Whether to show a loading bar while computing holdouts.\n        enable_cache: bool = False\n            Whether to enable the cache.\n        precompute_constant_stocastic_features: bool = False\n            Whether to precompute once the constant automatic stocastic\n            features before starting the embedding loop. This means that,\n            when left set to false, while the features will be computed\n            using the same input data, the random state between runs will\n            be different and therefore the experiment performance will\n            capture more of the variance derived from the stocastic aspect\n            of the considered method. When set to true, they are only computed\n            once and therefore the experiment will be overall faster.\n        smoke_test: bool = False\n            Whether this run should be considered a smoke test\n            and therefore use the smoke test configurations for\n            the provided model names and feature names.\n        number_of_slurm_nodes: Optional[int] = None\n            Number of SLURM nodes to consider as available.\n            This variable is used to parallelize the holdouts accordingly.\n        slurm_node_id_variable: str = \"SLURM_GRAPE_ID\"\n            Name of the system variable to use as SLURM node id.\n            It must be set in the slurm bash script.\n        **validation_kwargs: Dict\n            kwargs to be forwarded to the model `_evaluate` method.\n        \"\"\"\n        if not isinstance(number_of_holdouts, int) or number_of_holdouts <= 0:\n            raise ValueError(\n                \"The number of holdouts must be a strictly positive integer, \"\n                f\"but {number_of_holdouts} was provided.\"\n            )\n\n        if subgraph_of_interest is not None:\n            if cls.task_name() not in (\"Edge Prediction\", \"Edge Label Prediction\"):\n                raise ValueError(\n                    \"A subgraph of interest was provided, but this parameter \"\n                    \"is only currently supported for Edge Prediction and \"\n                    f\"Edge Label Prediction tasks and not the {cls.task_name()} task.\"\n                )\n\n            if not graph.contains(subgraph_of_interest):\n                raise ValueError(\n                    \"The provided subgraph of interest is not \"\n                    f\"contained in the provided graph {graph.get_name()}.\"\n                )\n\n            if not subgraph_of_interest.has_edges():\n                raise ValueError(\n                    \"The provided subgraph of interest does not \"\n                    \"have any edges!\"\n                )\n\n            # We check whether the subgraph of interest shares the same vocabulary\n            # of the main graph. If this is true, we can skip the filtering step to\n            # drop the nodes from the train and test graph.\n            subgraph_of_interest_has_compatible_nodes = graph.has_compatible_node_vocabularies(\n                subgraph_of_interest\n            )\n        else:\n            if use_subgraph_as_support:\n                raise ValueError(\n                    \"No subgraph of interest was provided but \"\n                    \"it has been requested to use the subgraph \"\n                    \"of interest as support. It is not clear \"\n                    \"how to proceed.\"\n                )\n            subgraph_of_interest_has_compatible_nodes = None\n\n        if number_of_slurm_nodes is not None:\n            must_be_in_slurm_node()\n            if not isinstance(number_of_slurm_nodes, int) or number_of_slurm_nodes <= 0:\n                raise ValueError(\n                    \"The number of SLURM nodes must be a positive integer value.\"\n                )\n            if number_of_holdouts > number_of_slurm_nodes:\n                raise ValueError(\n                    (\n                        \"Please be advised that you are currently running an excessive \"\n                        \"parametrization of the SLURM cluster. We currently can only parallelize \"\n                        \"the execution of different holdouts. \"\n                        \"The number of holdouts requested are {number_of_holdouts} but you are \"\n                        \"currently using {number_of_slurm_nodes} SLURM nodes! \"\n                        \"Possibly, you are currently running a task such as a grid search \"\n                        \"and therefore you intend us to parallelize only the sub-segment of SLURM \"\n                        \"nodes necessary to run the holdouts.\"\n                    ).format(\n                        number_of_holdouts=number_of_holdouts,\n                        number_of_slurm_nodes=number_of_slurm_nodes\n                    )\n                )\n\n        # Retrieve the set of provided automatic features parameters\n        # so we can put them in the report.\n        features_parameters = {\n            parameter_name: value\n            for features in (\n                node_features\n                if isinstance(node_features, (list, tuple))\n                else (node_features,),\n                node_type_features\n                if isinstance(node_type_features, (list, tuple))\n                else (node_type_features,),\n                edge_features\n                if isinstance(edge_features, (list, tuple))\n                else (edge_features,),\n            )\n            for feature in features\n            if issubclass(feature.__class__, AbstractModel)\n            for parameter_name, value in feature.parameters().items()\n        }\n\n        # Retrieve the set of provided automatic features names\n        # so we can put them in the report.\n        features_names = list({\n            feature.model_name()\n            for features in (\n                node_features\n                if isinstance(node_features, (list, tuple))\n                else (node_features,),\n                node_type_features\n                if isinstance(node_type_features, (list, tuple))\n                else (node_type_features,),\n                edge_features\n                if isinstance(edge_features, (list, tuple))\n                else (edge_features,),\n            )\n            for feature in features\n            if issubclass(feature.__class__, AbstractEmbeddingModel)\n        })\n\n        # We normalize and/or compute the node features, having\n        # the care of skipping the features that induce bias when\n        # computed on the entire graph.\n        # This way we compute only once the features that do not\n        # cause biases for this task, while recomputing those\n        # that cause biases at each holdout, avoiding said biases.\n        starting_to_compute_constant_node_features = time.time()\n        node_features = cls.normalize_node_features(\n            graph,\n            random_state=random_state,\n            node_features=node_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=True,\n            precompute_constant_stocastic_features=precompute_constant_stocastic_features,\n            smoke_test=smoke_test\n        )\n        time_required_to_compute_constant_node_features = time.time(\n        ) - starting_to_compute_constant_node_features\n\n        # We execute the same thing as described above,\n        # but now for the node type features instead that for\n        # the node features.\n        starting_to_compute_constant_node_type_features = time.time()\n        node_type_features = cls.normalize_node_type_features(\n            graph,\n            random_state=random_state,\n            node_type_features=node_type_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=True,\n            precompute_constant_stocastic_features=precompute_constant_stocastic_features,\n            smoke_test=smoke_test\n        )\n        time_required_to_compute_constant_node_type_features = time.time(\n        ) - starting_to_compute_constant_node_type_features\n\n        # We execute the same thing as described above,\n        # but now for the edge features instead that for\n        # the node features.\n        starting_to_compute_constant_edge_features = time.time()\n        edge_features = cls.normalize_edge_features(\n            graph,\n            random_state=random_state,\n            edge_features=edge_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=True,\n            precompute_constant_stocastic_features=precompute_constant_stocastic_features,\n            smoke_test=smoke_test\n        )\n        time_required_to_compute_constant_edge_features = time.time(\n        ) - starting_to_compute_constant_edge_features\n\n        metadata = dict(\n            number_of_threads=os.cpu_count(),\n            python_version=platform.python_version(),\n            platform=platform.platform(),\n            number_of_holdouts=number_of_holdouts,\n            number_of_slurm_nodes=number_of_slurm_nodes,\n            time_required_to_compute_constant_node_features=time_required_to_compute_constant_node_features,\n            time_required_to_compute_constant_node_type_features=time_required_to_compute_constant_node_type_features,\n            time_required_to_compute_constant_edge_features=time_required_to_compute_constant_edge_features,\n        )\n\n        if number_of_slurm_nodes is not None:\n            if slurm_node_id_variable not in os.environ:\n                raise ValueError(\n                    (\n                        \"Please do be advised that you have not provided \"\n                        \"the {slurm_node_id_variable} variable but you have provided specified that \"\n                        \"we should parallelize the holdouts across {number_of_slurm_nodes} nodes. \"\n                        \"Please do make available this variable in the \"\n                        \"slurm bash script by using the `export` flag \"\n                        \"in a script similar to the following:\\n\"\n                        \"`srun --export=ALL,{slurm_node_id_variable}=$node_id` python3 your_script.py\\n\"\n                        \"You can learn more about this in the library tutorials.\"\n                    ).format(\n                        slurm_node_id_variable=slurm_node_id_variable,\n                        number_of_slurm_nodes=number_of_slurm_nodes\n                    )\n                )\n            slurm_node_id = int(os.environ[slurm_node_id_variable])\n            metadata[\"slurm_node_id\"] = slurm_node_id\n            metadata[\"number_of_slurm_nodes\"] = number_of_slurm_nodes\n\n        # We start to iterate on the holdouts.\n        performance = pd.concat([\n            cls._evaluate_on_single_holdout(\n                models=models,\n                library_names=library_names,\n                graph=graph,\n                subgraph_of_interest=subgraph_of_interest,\n                use_subgraph_as_support=use_subgraph_as_support,\n                node_features=node_features,\n                node_type_features=node_type_features,\n                edge_features=edge_features,\n                random_state=random_state,\n                holdout_number=holdout_number,\n                number_of_holdouts=number_of_holdouts,\n                evaluation_schema=evaluation_schema,\n                enable_cache=enable_cache,\n                smoke_test=smoke_test,\n                holdouts_kwargs=holdouts_kwargs,\n                subgraph_of_interest_has_compatible_nodes=subgraph_of_interest_has_compatible_nodes,\n                verbose=verbose and (number_of_slurm_nodes is None or slurm_node_id==0),\n                features_names=features_names,\n                features_parameters=features_parameters,\n                metadata=metadata.copy(),\n                **validation_kwargs\n            )\n            for holdout_number in trange(\n                number_of_holdouts,\n                disable=not (verbose and (number_of_slurm_nodes is None or slurm_node_id==0)),\n                leave=False,\n                dynamic_ncols=True,\n                desc=f\"Evaluating on {graph.get_name()}\"\n            )\n            if (\n                number_of_slurm_nodes is None or\n                (\n                    # We need to also mode the number of SLURM node IDs\n                    # because the user may be parallelizing across many\n                    # diffent nodes in contexts such as wide grid searches.\n                    slurm_node_id % number_of_slurm_nodes\n                ) == (\n                    # We need to mode the holdout number as the number\n                    # of holdouts may exceed the number of available SLURM\n                    # nodes that the user has made available to this pipeline.\n                    holdout_number % number_of_slurm_nodes\n                )\n            )\n        ])\n\n        # We save the constant values for this model\n        # execution.\n        return performance\n",
+    "backend_metadata": {
+        "type": "pandas",
+        "columns_types": [
+            "str",
+            "float64",
+            "float64",
+            "bool",
+            "bool",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "str",
+            "bool",
+            "int64",
+            "str",
+            "str",
+            "int64",
+            "str",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "bool",
+            "str",
+            "float64",
+            "int64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "int64",
+            "int64",
+            "float64",
+            "str",
+            "str",
+            "float64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "bool",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str"
+        ],
+        "columns": [
+            "evaluation_mode",
+            "train_size",
+            "validation_unbalance_rate",
+            "use_scale_free_distribution",
+            "validation_sample_only_edges_with_heterogeneous_node_types",
+            "matthews_correlation_coefficient",
+            "accuracy",
+            "balanced_accuracy",
+            "recall",
+            "negative_predictive_value",
+            "diagnostic_odds_ratio",
+            "negative_likelyhood_ratio",
+            "positive_likelyhood_ratio",
+            "fowlkes_mallows_index",
+            "markedness",
+            "informedness",
+            "f1_score",
+            "fall_out",
+            "prevalence_threshold",
+            "miss_rate",
+            "false_discovery_rate",
+            "false_omission_rate",
+            "threat_score",
+            "specificity",
+            "prevalence",
+            "precision",
+            "auroc",
+            "auprc",
+            "time_required_for_training",
+            "time_required_for_evaluation",
+            "task_name",
+            "model_name",
+            "library_name",
+            "graph_name",
+            "nodes_number",
+            "edges_number",
+            "evaluation_schema",
+            "holdout_number",
+            "holdouts_kwargs",
+            "use_subgraph_as_support",
+            "number_of_threads",
+            "python_version",
+            "platform",
+            "number_of_holdouts",
+            "number_of_slurm_nodes",
+            "time_required_to_compute_constant_node_features",
+            "time_required_to_compute_constant_node_type_features",
+            "time_required_to_compute_constant_edge_features",
+            "time_required_for_setting_up_holdout",
+            "time_required_to_compute_node_features",
+            "time_required_to_compute_node_type_features",
+            "time_required_to_compute_edge_features",
+            "features_names",
+            [
+                "model_parameters",
+                "training_sample_only_edges_with_heterogeneous_node_types"
+            ],
+            [
+                "model_parameters",
+                "edge_embedding_method"
+            ],
+            [
+                "model_parameters",
+                "training_unbalance_rate"
+            ],
+            [
+                "model_parameters",
+                "prediction_batch_size"
+            ],
+            [
+                "model_parameters",
+                "use_edge_metrics"
+            ],
+            [
+                "model_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "model_parameters",
+                "random_state"
+            ],
+            [
+                "model_parameters",
+                "n_estimators"
+            ],
+            [
+                "model_parameters",
+                "criterion"
+            ],
+            [
+                "model_parameters",
+                "max_depth"
+            ],
+            [
+                "model_parameters",
+                "min_samples_split"
+            ],
+            [
+                "model_parameters",
+                "min_samples_leaf"
+            ],
+            [
+                "model_parameters",
+                "min_weight_fraction_leaf"
+            ],
+            [
+                "model_parameters",
+                "max_features"
+            ],
+            [
+                "model_parameters",
+                "max_leaf_nodes"
+            ],
+            [
+                "model_parameters",
+                "min_impurity_decrease"
+            ],
+            [
+                "model_parameters",
+                "bootstrap"
+            ],
+            [
+                "model_parameters",
+                "oob_score"
+            ],
+            [
+                "model_parameters",
+                "n_jobs"
+            ],
+            [
+                "model_parameters",
+                "verbose"
+            ],
+            [
+                "model_parameters",
+                "warm_start"
+            ],
+            [
+                "model_parameters",
+                "ccp_alpha"
+            ],
+            [
+                "model_parameters",
+                "max_samples"
+            ],
+            [
+                "features_parameters",
+                "random_state"
+            ],
+            [
+                "features_parameters",
+                "embedding_size"
+            ],
+            [
+                "features_parameters",
+                "epochs"
+            ],
+            [
+                "features_parameters",
+                "clipping_value"
+            ],
+            [
+                "features_parameters",
+                "number_of_negative_samples"
+            ],
+            [
+                "features_parameters",
+                "walk_length"
+            ],
+            [
+                "features_parameters",
+                "iterations"
+            ],
+            [
+                "features_parameters",
+                "window_size"
+            ],
+            [
+                "features_parameters",
+                "max_neighbours"
+            ],
+            [
+                "features_parameters",
+                "learning_rate"
+            ],
+            [
+                "features_parameters",
+                "learning_rate_decay"
+            ],
+            [
+                "features_parameters",
+                "central_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "contextual_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "normalize_by_degree"
+            ],
+            [
+                "features_parameters",
+                "stochastic_downsample_by_degree"
+            ],
+            [
+                "features_parameters",
+                "normalize_learning_rate_by_degree"
+            ],
+            [
+                "features_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "features_parameters",
+                "dtype"
+            ]
+        ],
+        "index_type": "int64",
+        "columns_names_type": [
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple"
+        ]
+    },
+    "parameters": {
+        "library_names": null,
+        "evaluation_schema": "Connected Monte Carlo",
+        "holdouts_kwargs": {
+            "train_size": 0.8,
+            "minimum_node_degree": 5,
+            "maximum_node_degree": 100
+        },
+        "node_type_features": null,
+        "edge_features": null,
+        "subgraph_of_interest": null,
+        "use_subgraph_as_support": false,
+        "number_of_holdouts": 10,
+        "random_state": 42,
+        "enable_cache": true,
+        "precompute_constant_stocastic_features": false,
+        "number_of_slurm_nodes": null,
+        "slurm_node_id_variable": "SLURM_GRAPE_ID",
+        "validation_sample_only_edges_with_heterogeneous_node_types": false,
+        "source_node_types_names": null,
+        "destination_node_types_names": null,
+        "source_edge_types_names": null,
+        "destination_edge_types_names": null,
+        "source_nodes_prefixes": null,
+        "destination_nodes_prefixes": null,
+        "validation_unbalance_rates": [
+            1.0
+        ],
+        "use_scale_free_distribution": true
+    }
+}

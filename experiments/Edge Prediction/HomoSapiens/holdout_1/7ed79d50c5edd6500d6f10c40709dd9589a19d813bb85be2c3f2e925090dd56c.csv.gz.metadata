@@ -1,0 +1,487 @@
+{
+    "creation_time": 1673999458.3689854,
+    "creation_time_human": "2023-01-17 23:50:58",
+    "time_delta": 200.50409030914307,
+    "time_delta_human": "3 minutes and 20 seconds",
+    "file_dump_time": 0.007178783416748047,
+    "file_dump_time_human": "0 seconds",
+    "file_dump_size": 1811,
+    "file_dump_size_human": "1.8 kB",
+    "load_kwargs": {},
+    "dump_kwargs": {},
+    "function_name": "_evaluate_on_single_holdout",
+    "function_file": "/home/lucacappelletti/anaconda3/lib/python3.7/site-packages/embiggen/utils/abstract_models/abstract_classifier_model.py:1401",
+    "args_to_ignore": [
+        "verbose",
+        "smoke_test",
+        "number_of_holdouts",
+        "metadata"
+    ],
+    "source": "    @classmethod\n    @Cache(\n        cache_path=\"{cache_dir}/{cls.task_name()}/{graph.get_name()}/holdout_{holdout_number}/{_hash}.csv.gz\",\n        cache_dir=\"experiments\",\n        enable_cache_arg_name=\"enable_cache\",\n        args_to_ignore=[\n            \"verbose\",\n            \"smoke_test\",\n            \"number_of_holdouts\",\n            \"metadata\"\n        ],\n        capture_enable_cache_arg_name=False,\n        use_approximated_hash=True\n    )\n    def _evaluate_on_single_holdout(\n        cls,\n        models: Union[Type[\"AbstractClassifierModel\"], List[Type[\"AbstractClassifierModel\"]]],\n        library_names: Optional[Union[str, List[str]]],\n        graph: Graph,\n        subgraph_of_interest: Graph,\n        use_subgraph_as_support: bool,\n        node_features: Optional[List[np.ndarray]],\n        node_type_features: Optional[List[np.ndarray]],\n        edge_features: Optional[List[np.ndarray]],\n        random_state: int,\n        holdout_number: int,\n        number_of_holdouts: int,\n        evaluation_schema: str,\n        enable_cache: bool,\n        smoke_test: bool,\n        holdouts_kwargs: Dict[str, Any],\n        subgraph_of_interest_has_compatible_nodes: Optional[bool],\n        features_names: List[str],\n        features_parameters: Dict[str, Any],\n        metadata: Dict[str, Any],\n        verbose: bool,\n        **validation_kwargs\n    ) -> pd.DataFrame:\n        starting_setting_up_holdout = time.time()\n\n        # We create the graph split using the provided schema.\n        train, test = cls.split_graph_following_evaluation_schema(\n            graph=graph,\n            evaluation_schema=evaluation_schema,\n            random_state=random_state,\n            holdout_number=holdout_number,\n            number_of_holdouts=number_of_holdouts,\n            **holdouts_kwargs\n        )\n\n        # We compute the remaining features\n        starting_to_compute_node_features = time.time()\n        holdout_node_features = cls.normalize_node_features(\n            train,\n            random_state=random_state*(holdout_number+1),\n            node_features=node_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=False,\n            smoke_test=smoke_test,\n            precompute_constant_stocastic_features=True\n        )\n        time_required_to_compute_node_features = time.time() - \\\n            starting_to_compute_node_features\n\n        # We compute the remaining features\n        starting_to_compute_node_type_features = time.time()\n        holdout_node_type_features = cls.normalize_node_type_features(\n            train,\n            random_state=random_state*(holdout_number+1),\n            node_type_features=node_type_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=False,\n            smoke_test=smoke_test,\n            precompute_constant_stocastic_features=True\n        )\n        time_required_to_compute_node_type_features = time.time(\n        ) - starting_to_compute_node_type_features\n\n        # We execute the same thing as described above,\n        # but now for the edge features instead that for\n        # the node features.\n        starting_to_compute_edge_features = time.time()\n        holdout_edge_features = cls.normalize_edge_features(\n            train,\n            random_state=random_state*(holdout_number+1),\n            edge_features=edge_features,\n            allow_automatic_feature=True,\n            skip_evaluation_biased_feature=False,\n            smoke_test=smoke_test,\n            precompute_constant_stocastic_features=True\n        )\n        time_required_to_compute_edge_features = time.time() - \\\n            starting_to_compute_edge_features\n\n        if subgraph_of_interest is not None:\n            # First we align the train and test graph to have\n            # the same node dictionary of the subgraph of interest\n            # when the subgraph of interest does not have\n            # the same node dictionary as the original graph.\n            if not subgraph_of_interest_has_compatible_nodes:\n                train = train.filter_from_names(\n                    node_names_to_keep_from_graph=subgraph_of_interest\n                )\n                test = test.filter_from_names(\n                    node_names_to_keep_from_graph=subgraph_of_interest\n                )\n\n                # We adjust the node features to only include the node features\n                # that the subgraph of interest allows us to use.\n                if holdout_node_features is not None:\n                    # We obtain the mapping from the old to the new node IDs\n                    node_ids_mapping = train.get_node_ids_mapping_from_graph(\n                        graph\n                    )\n\n                    holdout_node_features = [\n                        holdout_node_feature[node_ids_mapping]\n                        for holdout_node_feature in holdout_node_features\n                    ]\n\n            train_of_interest = train & subgraph_of_interest\n            test_of_interest = test & subgraph_of_interest\n\n            # We validate that the two graphs are still\n            # valid for this task.\n            for graph_partition, graph_partition_name in (\n                (train_of_interest, \"train\"),\n                (test_of_interest, \"test\"),\n            ):\n                if not graph_partition.has_nodes():\n                    raise ValueError(\n                        f\"The {graph_partition_name} graph {graph_partition.get_name()} obtained from the evaluation \"\n                        f\"schema {evaluation_schema}, once filtered using the provided \"\n                        \"subgraph of interest, does not have any more nodes.\"\n                    )\n                if (\n                    cls.task_name() in (\"Edge Prediction\", \"Edge Label Prediction\") and\n                    not graph_partition.has_edges()\n                ):\n                    raise ValueError(\n                        f\"The {graph_partition_name} graph {graph_partition.get_name()} obtained from the evaluation \"\n                        f\"schema {evaluation_schema}, once filtered using the provided \"\n                        \"subgraph of interest, does not have any more edges which are \"\n                        f\"essential when running a {cls.task_name()} task.\"\n                    )\n        else:\n            train_of_interest = train\n            test_of_interest = test\n\n        additional_validation_kwargs = cls._prepare_evaluation(\n            graph=graph,\n            support=train,\n            train=train_of_interest,\n            test=test_of_interest,\n            subgraph_of_interest=subgraph_of_interest,\n            random_state=random_state * holdout_number,\n            verbose=verbose,\n            **validation_kwargs\n        )\n\n        time_required_for_setting_up_holdout = time.time() - starting_setting_up_holdout\n\n        metadata = dict(\n            **metadata,\n            time_required_for_setting_up_holdout=time_required_for_setting_up_holdout,\n            time_required_to_compute_node_features=time_required_to_compute_node_features,\n            time_required_to_compute_node_type_features=time_required_to_compute_node_type_features,\n            time_required_to_compute_edge_features=time_required_to_compute_edge_features\n        )\n\n        holdout_performance = pd.concat([\n            classifier._train_and_evaluate_model(\n                graph=graph,\n                train_of_interest=train_of_interest,\n                test_of_interest=test_of_interest,\n                train=train,\n                subgraph_of_interest=subgraph_of_interest,\n                use_subgraph_as_support=use_subgraph_as_support,\n                node_features=holdout_node_features,\n                node_type_features=holdout_node_type_features,\n                edge_features=holdout_edge_features,\n                random_state=random_state,\n                holdout_number=holdout_number,\n                evaluation_schema=evaluation_schema,\n                holdouts_kwargs=holdouts_kwargs,\n                enable_cache=enable_cache,\n                features_names=features_names,\n                features_parameters=features_parameters,\n                metadata=metadata.copy(),\n                **additional_validation_kwargs,\n                **validation_kwargs,\n            )\n            for classifier in cls.iterate_classifier_models(\n                models=models,\n                library_names=library_names,\n                smoke_test=smoke_test\n            )\n        ])\n\n        return holdout_performance\n",
+    "backend_metadata": {
+        "type": "pandas",
+        "columns_types": [
+            "str",
+            "float64",
+            "float64",
+            "bool",
+            "bool",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "str",
+            "bool",
+            "int64",
+            "str",
+            "str",
+            "int64",
+            "str",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "bool",
+            "str",
+            "float64",
+            "int64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "int64",
+            "int64",
+            "float64",
+            "str",
+            "str",
+            "float64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "bool",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str"
+        ],
+        "columns": [
+            "evaluation_mode",
+            "train_size",
+            "validation_unbalance_rate",
+            "use_scale_free_distribution",
+            "validation_sample_only_edges_with_heterogeneous_node_types",
+            "negative_predictive_value",
+            "threat_score",
+            "fowlkes_mallows_index",
+            "precision",
+            "fall_out",
+            "markedness",
+            "diagnostic_odds_ratio",
+            "matthews_correlation_coefficient",
+            "false_omission_rate",
+            "accuracy",
+            "negative_likelyhood_ratio",
+            "f1_score",
+            "recall",
+            "miss_rate",
+            "prevalence",
+            "positive_likelyhood_ratio",
+            "prevalence_threshold",
+            "balanced_accuracy",
+            "false_discovery_rate",
+            "specificity",
+            "informedness",
+            "auroc",
+            "auprc",
+            "time_required_for_training",
+            "time_required_for_evaluation",
+            "task_name",
+            "model_name",
+            "library_name",
+            "graph_name",
+            "nodes_number",
+            "edges_number",
+            "evaluation_schema",
+            "holdout_number",
+            "holdouts_kwargs",
+            "use_subgraph_as_support",
+            "number_of_threads",
+            "python_version",
+            "platform",
+            "number_of_holdouts",
+            "number_of_slurm_nodes",
+            "time_required_to_compute_constant_node_features",
+            "time_required_to_compute_constant_node_type_features",
+            "time_required_to_compute_constant_edge_features",
+            "time_required_for_setting_up_holdout",
+            "time_required_to_compute_node_features",
+            "time_required_to_compute_node_type_features",
+            "time_required_to_compute_edge_features",
+            "features_names",
+            [
+                "model_parameters",
+                "training_sample_only_edges_with_heterogeneous_node_types"
+            ],
+            [
+                "model_parameters",
+                "edge_embedding_method"
+            ],
+            [
+                "model_parameters",
+                "training_unbalance_rate"
+            ],
+            [
+                "model_parameters",
+                "prediction_batch_size"
+            ],
+            [
+                "model_parameters",
+                "use_edge_metrics"
+            ],
+            [
+                "model_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "model_parameters",
+                "random_state"
+            ],
+            [
+                "model_parameters",
+                "n_estimators"
+            ],
+            [
+                "model_parameters",
+                "criterion"
+            ],
+            [
+                "model_parameters",
+                "max_depth"
+            ],
+            [
+                "model_parameters",
+                "min_samples_split"
+            ],
+            [
+                "model_parameters",
+                "min_samples_leaf"
+            ],
+            [
+                "model_parameters",
+                "min_weight_fraction_leaf"
+            ],
+            [
+                "model_parameters",
+                "max_features"
+            ],
+            [
+                "model_parameters",
+                "max_leaf_nodes"
+            ],
+            [
+                "model_parameters",
+                "min_impurity_decrease"
+            ],
+            [
+                "model_parameters",
+                "bootstrap"
+            ],
+            [
+                "model_parameters",
+                "oob_score"
+            ],
+            [
+                "model_parameters",
+                "n_jobs"
+            ],
+            [
+                "model_parameters",
+                "verbose"
+            ],
+            [
+                "model_parameters",
+                "warm_start"
+            ],
+            [
+                "model_parameters",
+                "ccp_alpha"
+            ],
+            [
+                "model_parameters",
+                "max_samples"
+            ],
+            [
+                "features_parameters",
+                "random_state"
+            ],
+            [
+                "features_parameters",
+                "embedding_size"
+            ],
+            [
+                "features_parameters",
+                "epochs"
+            ],
+            [
+                "features_parameters",
+                "clipping_value"
+            ],
+            [
+                "features_parameters",
+                "number_of_negative_samples"
+            ],
+            [
+                "features_parameters",
+                "walk_length"
+            ],
+            [
+                "features_parameters",
+                "iterations"
+            ],
+            [
+                "features_parameters",
+                "window_size"
+            ],
+            [
+                "features_parameters",
+                "max_neighbours"
+            ],
+            [
+                "features_parameters",
+                "learning_rate"
+            ],
+            [
+                "features_parameters",
+                "learning_rate_decay"
+            ],
+            [
+                "features_parameters",
+                "central_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "contextual_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "normalize_by_degree"
+            ],
+            [
+                "features_parameters",
+                "stochastic_downsample_by_degree"
+            ],
+            [
+                "features_parameters",
+                "normalize_learning_rate_by_degree"
+            ],
+            [
+                "features_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "features_parameters",
+                "dtype"
+            ]
+        ],
+        "index_type": "int64",
+        "columns_names_type": [
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple"
+        ]
+    },
+    "parameters": {
+        "library_names": null,
+        "subgraph_of_interest": null,
+        "use_subgraph_as_support": false,
+        "node_type_features": null,
+        "edge_features": null,
+        "random_state": 42,
+        "holdout_number": 1,
+        "evaluation_schema": "Connected Monte Carlo",
+        "enable_cache": true,
+        "holdouts_kwargs": {
+            "train_size": 0.8,
+            "minimum_node_degree": 5,
+            "maximum_node_degree": 100
+        },
+        "subgraph_of_interest_has_compatible_nodes": null,
+        "features_names": [
+            "DeepWalk SkipGram"
+        ],
+        "features_parameters": {
+            "random_state": 42,
+            "embedding_size": 100,
+            "epochs": 30,
+            "clipping_value": 6.0,
+            "number_of_negative_samples": 10,
+            "walk_length": 128,
+            "iterations": 10,
+            "window_size": 5,
+            "max_neighbours": 100,
+            "learning_rate": 0.01,
+            "learning_rate_decay": 0.9,
+            "central_nodes_embedding_path": null,
+            "contextual_nodes_embedding_path": null,
+            "normalize_by_degree": false,
+            "stochastic_downsample_by_degree": false,
+            "normalize_learning_rate_by_degree": false,
+            "use_scale_free_distribution": true,
+            "dtype": "f32"
+        },
+        "validation_sample_only_edges_with_heterogeneous_node_types": false,
+        "source_node_types_names": null,
+        "destination_node_types_names": null,
+        "source_edge_types_names": null,
+        "destination_edge_types_names": null,
+        "source_nodes_prefixes": null,
+        "destination_nodes_prefixes": null,
+        "validation_unbalance_rates": [
+            1.0
+        ],
+        "use_scale_free_distribution": true
+    }
+}

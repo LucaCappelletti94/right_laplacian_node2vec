@@ -1,0 +1,486 @@
+{
+    "creation_time": 1674000959.7910104,
+    "creation_time_human": "2023-01-18 00:15:59",
+    "time_delta": 107.28419494628906,
+    "time_delta_human": "1 minute and 47 seconds",
+    "file_dump_time": 0.008480072021484375,
+    "file_dump_time_human": "0 seconds",
+    "file_dump_size": 1816,
+    "file_dump_size_human": "1.8 kB",
+    "load_kwargs": {},
+    "dump_kwargs": {},
+    "function_name": "_train_and_evaluate_model",
+    "function_file": "/home/lucacappelletti/anaconda3/lib/python3.7/site-packages/embiggen/utils/abstract_models/abstract_classifier_model.py:1262",
+    "args_to_ignore": [
+        "verbose",
+        "smoke_test",
+        "train_of_interest",
+        "test_of_interest",
+        "train",
+        "metadata"
+    ],
+    "source": "    @Cache(\n        cache_path=\"{cache_dir}/{self.task_name()}/{graph.get_name()}/holdout_{holdout_number}/{self.model_name()}/{self.library_name()}/{_hash}.csv.gz\",\n        cache_dir=\"experiments\",\n        enable_cache_arg_name=\"enable_cache\",\n        args_to_ignore=[\n            \"verbose\",\n            \"smoke_test\",\n            \"train_of_interest\",\n            \"test_of_interest\",\n            \"train\",\n            \"metadata\"\n        ],\n        capture_enable_cache_arg_name=True,\n        use_approximated_hash=True\n    )\n    def _train_and_evaluate_model(\n        self,\n        graph: Graph,\n        train_of_interest: Graph,\n        test_of_interest: Graph,\n        train: Graph,\n        subgraph_of_interest: Graph,\n        use_subgraph_as_support: bool,\n        node_features: Optional[List[np.ndarray]],\n        node_type_features: Optional[List[np.ndarray]],\n        edge_features: Optional[List[np.ndarray]],\n        random_state: int,\n        holdout_number: int,\n        evaluation_schema: str,\n        holdouts_kwargs: Dict[str, Any],\n        features_names: List[str],\n        features_parameters: Dict[str, Any],\n        metadata: Dict[str, Any],\n        **validation_kwargs\n    ) -> pd.DataFrame:\n        \"\"\"Run inner training and evaluation.\"\"\"\n        if self.is_stocastic():\n            self.set_random_state(random_state*(holdout_number+1))\n        # Fit the model using the training graph\n        training_start = time.time()\n        self.fit(\n            graph=train_of_interest,\n            support=train_of_interest if use_subgraph_as_support else train,\n            node_features=node_features,\n            node_type_features=node_type_features,\n            edge_features=edge_features\n        )\n        time_required_for_training = time.time() - training_start\n\n        start_evaluation = time.time()\n\n        try:\n            # We add the newly computed performance.\n            model_performance = pd.DataFrame(self._evaluate(\n                graph=graph,\n                support=train_of_interest if use_subgraph_as_support else train,\n                train=train_of_interest,\n                test=test_of_interest,\n                node_features=node_features,\n                node_type_features=node_type_features,\n                edge_features=edge_features,\n                subgraph_of_interest=subgraph_of_interest,\n                random_state=random_state * holdout_number,\n                verbose=False,\n                **validation_kwargs\n            )).reset_index(drop=True)\n        except RuntimeError as e:\n            raise e\n        except Exception as e:\n            raise RuntimeError(\n                f\"An exception was raised while calling the `._evaluate` method of {self.model_name()} \"\n                f\"implemented using the {self.library_name()} for the {self.task_name()} task. \"\n                f\"Specifically, the class of the model is {self.__class__.__name__}. \"\n            ) from e\n\n        time_required_for_evaluation = time.time() - start_evaluation\n\n        model_performance[\"time_required_for_training\"] = time_required_for_training\n        model_performance[\"time_required_for_evaluation\"] = time_required_for_evaluation\n        model_performance[\"task_name\"] = self.task_name()\n        model_performance[\"model_name\"] = self.model_name()\n        model_performance[\"library_name\"] = self.library_name()\n        model_performance[\"graph_name\"] = graph.get_name()\n        model_performance[\"nodes_number\"] = graph.get_number_of_nodes()\n        model_performance[\"edges_number\"] = graph.get_number_of_directed_edges()\n        model_performance[\"evaluation_schema\"] = evaluation_schema\n        model_performance[\"holdout_number\"] = holdout_number\n        model_performance[\"holdouts_kwargs\"] = json.dumps(holdouts_kwargs)\n        model_performance[\"use_subgraph_as_support\"] = use_subgraph_as_support\n\n        for column_name, column_value in metadata.items():\n            model_performance[column_name] = column_value\n\n        df_model_parameters = pd.DataFrame(\n            dict(), index=model_performance.index)\n        df_features_parameters = pd.DataFrame(\n            dict(), index=model_performance.index)\n\n        for parameter_name, parameter_value in self.parameters().items():\n            if isinstance(parameter_value, (list, tuple)):\n                parameter_value = str(parameter_value)\n            df_model_parameters[parameter_name] = parameter_value\n\n        df_model_parameters.columns = [\n            [\"model_parameters\"] * len(df_model_parameters.columns),\n            df_model_parameters.columns\n        ]\n\n        model_performance[\"features_names\"] = format_list(\n            features_names\n        )\n\n        for parameter, value in features_parameters.items():\n            if parameter in df_features_parameters.columns:\n                raise ValueError(\n                    \"There has been a collision between the parameters used in \"\n                    \"one of the embedding models and the parameter \"\n                    \"used for the validation and reporting of the task itself. \"\n                    f\"The parameter that has caused the collision is {parameter}. \"\n                    \"Please do change the name of the parameter in your model.\"\n                )\n            df_features_parameters[parameter] = str(value)\n\n        df_features_parameters.columns = [\n            [\"features_parameters\"] * len(df_features_parameters.columns),\n            df_features_parameters.columns\n        ]\n\n        model_performance = pd.concat(\n            [\n                model_performance,\n                df_model_parameters,\n                df_features_parameters\n            ],\n            axis=1\n        )\n\n        return model_performance\n",
+    "backend_metadata": {
+        "type": "pandas",
+        "columns_types": [
+            "str",
+            "float64",
+            "float64",
+            "bool",
+            "bool",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "str",
+            "bool",
+            "int64",
+            "str",
+            "str",
+            "int64",
+            "str",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "float64",
+            "str",
+            "bool",
+            "str",
+            "float64",
+            "int64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "str",
+            "int64",
+            "int64",
+            "int64",
+            "float64",
+            "str",
+            "str",
+            "float64",
+            "bool",
+            "bool",
+            "int64",
+            "int64",
+            "bool",
+            "float64",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str"
+        ],
+        "columns": [
+            "evaluation_mode",
+            "train_size",
+            "validation_unbalance_rate",
+            "use_scale_free_distribution",
+            "validation_sample_only_edges_with_heterogeneous_node_types",
+            "informedness",
+            "accuracy",
+            "prevalence",
+            "negative_likelyhood_ratio",
+            "false_discovery_rate",
+            "diagnostic_odds_ratio",
+            "precision",
+            "specificity",
+            "balanced_accuracy",
+            "fowlkes_mallows_index",
+            "matthews_correlation_coefficient",
+            "negative_predictive_value",
+            "recall",
+            "miss_rate",
+            "positive_likelyhood_ratio",
+            "threat_score",
+            "markedness",
+            "false_omission_rate",
+            "fall_out",
+            "prevalence_threshold",
+            "f1_score",
+            "auroc",
+            "auprc",
+            "time_required_for_training",
+            "time_required_for_evaluation",
+            "task_name",
+            "model_name",
+            "library_name",
+            "graph_name",
+            "nodes_number",
+            "edges_number",
+            "evaluation_schema",
+            "holdout_number",
+            "holdouts_kwargs",
+            "use_subgraph_as_support",
+            "number_of_threads",
+            "python_version",
+            "platform",
+            "number_of_holdouts",
+            "number_of_slurm_nodes",
+            "time_required_to_compute_constant_node_features",
+            "time_required_to_compute_constant_node_type_features",
+            "time_required_to_compute_constant_edge_features",
+            "time_required_for_setting_up_holdout",
+            "time_required_to_compute_node_features",
+            "time_required_to_compute_node_type_features",
+            "time_required_to_compute_edge_features",
+            "features_names",
+            [
+                "model_parameters",
+                "training_sample_only_edges_with_heterogeneous_node_types"
+            ],
+            [
+                "model_parameters",
+                "edge_embedding_method"
+            ],
+            [
+                "model_parameters",
+                "training_unbalance_rate"
+            ],
+            [
+                "model_parameters",
+                "prediction_batch_size"
+            ],
+            [
+                "model_parameters",
+                "use_edge_metrics"
+            ],
+            [
+                "model_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "model_parameters",
+                "random_state"
+            ],
+            [
+                "model_parameters",
+                "n_estimators"
+            ],
+            [
+                "model_parameters",
+                "criterion"
+            ],
+            [
+                "model_parameters",
+                "max_depth"
+            ],
+            [
+                "model_parameters",
+                "min_samples_split"
+            ],
+            [
+                "model_parameters",
+                "min_samples_leaf"
+            ],
+            [
+                "model_parameters",
+                "min_weight_fraction_leaf"
+            ],
+            [
+                "model_parameters",
+                "max_features"
+            ],
+            [
+                "model_parameters",
+                "max_leaf_nodes"
+            ],
+            [
+                "model_parameters",
+                "min_impurity_decrease"
+            ],
+            [
+                "model_parameters",
+                "bootstrap"
+            ],
+            [
+                "model_parameters",
+                "oob_score"
+            ],
+            [
+                "model_parameters",
+                "n_jobs"
+            ],
+            [
+                "model_parameters",
+                "verbose"
+            ],
+            [
+                "model_parameters",
+                "warm_start"
+            ],
+            [
+                "model_parameters",
+                "ccp_alpha"
+            ],
+            [
+                "model_parameters",
+                "max_samples"
+            ],
+            [
+                "features_parameters",
+                "random_state"
+            ],
+            [
+                "features_parameters",
+                "embedding_size"
+            ],
+            [
+                "features_parameters",
+                "epochs"
+            ],
+            [
+                "features_parameters",
+                "clipping_value"
+            ],
+            [
+                "features_parameters",
+                "number_of_negative_samples"
+            ],
+            [
+                "features_parameters",
+                "walk_length"
+            ],
+            [
+                "features_parameters",
+                "iterations"
+            ],
+            [
+                "features_parameters",
+                "window_size"
+            ],
+            [
+                "features_parameters",
+                "max_neighbours"
+            ],
+            [
+                "features_parameters",
+                "learning_rate"
+            ],
+            [
+                "features_parameters",
+                "learning_rate_decay"
+            ],
+            [
+                "features_parameters",
+                "central_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "contextual_nodes_embedding_path"
+            ],
+            [
+                "features_parameters",
+                "normalize_by_degree"
+            ],
+            [
+                "features_parameters",
+                "stochastic_downsample_by_degree"
+            ],
+            [
+                "features_parameters",
+                "normalize_learning_rate_by_degree"
+            ],
+            [
+                "features_parameters",
+                "use_scale_free_distribution"
+            ],
+            [
+                "features_parameters",
+                "dtype"
+            ]
+        ],
+        "index_type": "int64",
+        "columns_names_type": [
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "str",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple",
+            "tuple"
+        ]
+    },
+    "parameters": {
+        "subgraph_of_interest": null,
+        "use_subgraph_as_support": false,
+        "node_type_features": null,
+        "edge_features": null,
+        "random_state": 42,
+        "holdout_number": 8,
+        "evaluation_schema": "Connected Monte Carlo",
+        "holdouts_kwargs": {
+            "train_size": 0.8,
+            "minimum_node_degree": 5,
+            "maximum_node_degree": 100
+        },
+        "features_names": [
+            "DeepWalk SkipGram"
+        ],
+        "features_parameters": {
+            "random_state": 42,
+            "embedding_size": 100,
+            "epochs": 30,
+            "clipping_value": 6.0,
+            "number_of_negative_samples": 10,
+            "walk_length": 128,
+            "iterations": 10,
+            "window_size": 5,
+            "max_neighbours": 100,
+            "learning_rate": 0.01,
+            "learning_rate_decay": 0.9,
+            "central_nodes_embedding_path": null,
+            "contextual_nodes_embedding_path": null,
+            "normalize_by_degree": false,
+            "stochastic_downsample_by_degree": false,
+            "normalize_learning_rate_by_degree": false,
+            "use_scale_free_distribution": true,
+            "dtype": "f32"
+        },
+        "validation_sample_only_edges_with_heterogeneous_node_types": false,
+        "source_node_types_names": null,
+        "destination_node_types_names": null,
+        "source_edge_types_names": null,
+        "destination_edge_types_names": null,
+        "source_nodes_prefixes": null,
+        "destination_nodes_prefixes": null,
+        "validation_unbalance_rates": [
+            1.0
+        ],
+        "use_scale_free_distribution": true
+    }
+}
